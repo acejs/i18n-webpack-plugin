@@ -1,0 +1,63 @@
+{
+  "name": "i18n-webpack-plugin",
+  "version": "0.0.1",
+  "description": "I18n support based on webpack",
+  "main": "dist/index.js",
+  "repository": "https://github.com/acejs/i18n-webpack-plugin.git",
+  "author": "15380598700@163.com",
+  "license": "MIT",
+  "private": false,
+  "types": "types/index.d.ts",
+  "bin": {
+    "i18n": "./dist/i18n.js"
+  },
+  "files": [
+    "dist",
+    "types",
+    "package.json"
+  ],
+  "keywords": [
+    "Javascript",
+    "webpack",
+    "plugin",
+    "i18n"
+  ],
+  "dependencies": {
+    "@babel/register": "^7.11.5",
+    "@types/node-xlsx": "^0.15.0",
+    "@types/spark-md5": "^3.0.2",
+    "@types/webpack": "^4.41.22",
+    "@types/webpack-sources": "^1.4.2",
+    "@types/yargs": "^15.0.5",
+    "chalk": "^4.1.0",
+    "node-xlsx": "^0.15.0",
+    "spark-md5": "^3.0.1",
+    "terser": "^5.3.2",
+    "webpack": "^4.44.2",
+    "webpack-sources": "^1.4.3",
+    "yargs": "^16.0.3"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.11.6",
+    "@babel/generator": "^7.11.6",
+    "@babel/parser": "^7.11.5",
+    "@babel/preset-env": "^7.11.5",
+    "@babel/template": "^7.10.4",
+    "@babel/traverse": "^7.11.5",
+    "@babel/types": "^7.11.5",
+    "@types/babel-types": "^7.0.9",
+    "@types/babel__core": "^7.1.9",
+    "@types/babel__generator": "^7.6.1",
+    "@types/babel__template": "^7.0.2",
+    "@types/babel__traverse": "^7.0.14",
+    "@types/node": "^14.11.1",
+    "@typescript-eslint/eslint-plugin": "^4.1.0",
+    "@typescript-eslint/parser": "^4.1.0",
+    "eslint": "^7.8.1",
+    "eslint-config-prettier": "^6.11.0",
+    "eslint-plugin-prettier": "^3.1.4",
+    "html-webpack-plugin": "^4.4.1",
+    "prettier": "^2.1.1",
+    "typescript": "^4.0.2"
+  }
+}
