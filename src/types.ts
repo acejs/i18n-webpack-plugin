@@ -1,5 +1,5 @@
 export type StringFn = () => string
-export type VoidFn = () => string
+export type VoidFn = () => void
 
 export type FILTER = (str: string) => boolean
 
