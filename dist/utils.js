@@ -42,16 +42,27 @@ exports.checkFileExists = (path) => {
     return result;
 };
 /**
- * 检测目标目录是否存在，不存在则创建
+ * 检测目标目录是否存在
  * @param path 目录
  */
 exports.checkDirExists = (path) => {
+    let result;
     try {
         fs_1.default.accessSync(path);
+        result = true;
     }
-    catch (error) {
+    catch (_a) {
+        result = false;
+    }
+    return result;
+};
+/**
+ * 检测目标目录是否存在，不存在则创建
+ * @param path 目录
+ */
+exports.mkdirDirUnExists = (path) => {
+    if (!exports.checkDirExists(path))
         fs_1.default.mkdirSync(path);
-    }
 };
 /**
  * 是否仅仅包含第三发模块

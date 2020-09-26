@@ -59,7 +59,7 @@ class I18nWebpackPlugin {
             mode,
             outputPath: (output === null || output === void 0 ? void 0 : output.path) || path_1.default.join(process.cwd(), 'dist'),
         });
-        utils_1.checkDirExists(self.path);
+        utils_1.mkdirDirUnExists(self.path);
         if (mode === 'development' && this.action === 'collect') {
             utils_1.warn(`
         Don't collect chinese in development mode.
@@ -213,7 +213,7 @@ function collectChineseFromChunk(compilation, self) {
         const buffer = node_xlsx_1.default.build([{ name: 'i18n', data }]);
         const now = Date.now();
         // 检测目录是否存在
-        utils_1.checkDirExists(path_1.default.join(self.path, 'excel'));
+        utils_1.mkdirDirUnExists(path_1.default.join(self.path, 'excel'));
         fs_1.default.writeFile(path_1.default.resolve(self.path, 'excel', `i18n-${now}.xlsx`), new Uint8Array(buffer), { flag: 'w' }, (err) => {
             if (err)
                 return reject(err);

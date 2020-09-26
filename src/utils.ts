@@ -46,15 +46,26 @@ export const checkFileExists = (path: string): string => {
 }
 
 /**
+ * 检测目标目录是否存在
+ * @param path 目录
+ */
+export const checkDirExists = (path: string): boolean => {
+  let result: boolean
+  try {
+    fs.accessSync(path)
+    result = true
+  } catch {
+    result = false
+  }
+  return result
+}
+
+/**
  * 检测目标目录是否存在，不存在则创建
  * @param path 目录
  */
-export const checkDirExists = (path: string): void => {
-  try {
-    fs.accessSync(path)
-  } catch (error) {
-    fs.mkdirSync(path)
-  }
+export const mkdirDirUnExists = (path: string): void => {
+  if (!checkDirExists(path)) fs.mkdirSync(path)
 }
 
 /**

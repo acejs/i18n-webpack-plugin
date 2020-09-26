@@ -13,7 +13,7 @@ import {
   jsFileReg,
   isHtmlTag,
   onlyThirdChunk,
-  checkDirExists,
+  mkdirDirUnExists,
   log,
   warn,
   isAbsolute,
@@ -78,7 +78,7 @@ class I18nWebpackPlugin {
       outputPath: output?.path || path.join(process.cwd(), 'dist'),
     })
 
-    checkDirExists(self.path)
+    mkdirDirUnExists(self.path)
 
     if (mode === 'development' && this.action === 'collect') {
       warn(`
@@ -293,7 +293,7 @@ function collectChineseFromChunk(
     const now = Date.now()
 
     // 检测目录是否存在
-    checkDirExists(path.join(self.path, 'excel'))
+    mkdirDirUnExists(path.join(self.path, 'excel'))
 
     fs.writeFile(
       path.resolve(self.path, 'excel', `i18n-${now}.xlsx`),

@@ -28,13 +28,12 @@ const terser_1 = require("terser");
 const prefix = '%%function%%';
 /**
  * 获取用户自定义的内容 主要是对自定义函数、方法的处理
- * @param langPath 文件夹
- * @param type 语言类型
+ * @param customize
  */
-const getCustomizeContent = (langPath, type) => {
+const getCustomizeContent = (customize) => {
     return new Promise((resolve, reject) => {
         try {
-            Promise.resolve().then(() => __importStar(require(path_1.default.join(langPath, `customize/${type}.js`)))).then(({ default: o }) => {
+            Promise.resolve().then(() => __importStar(require(customize))).then(({ default: o }) => {
                 for (const [key, value] of Object.entries(o)) {
                     if (typeof value === 'function') {
                         o[key] = prefix + value.toString();
@@ -61,28 +60,27 @@ function babelCode(str) {
 exports.i18nFile = (I18nWebpackPlugin) => __awaiter(void 0, void 0, void 0, function* () {
     const { path: langPath, getLanguage, type } = I18nWebpackPlugin;
     const i18n = {};
-    function readFileAsync(env) {
-        return new Promise((resolve, reject) => {
-            try {
-                return resolve(JSON.parse(fs_1.default.readFileSync(path_1.default.join(langPath, `${env}.json`), 'utf8')));
-            }
-            catch (error) {
-                return reject(error);
-            }
-        });
-    }
+    const hasCust = utils_1.checkDirExists(path_1.default.join(langPath, `customize`));
     for (const value of type.values()) {
-        i18n[value] = yield readFileAsync(value);
+        const target = path_1.default.join(langPath, `${value}.json`);
+        if (!utils_1.checkDirExists(target)) {
+            utils_1.warn(`
+          i18n package ${value} load failed, 
+          Please check the legality of the Chinese language pack naming!`);
+        }
+        i18n[value] = JSON.parse(fs_1.default.readFileSync(target, 'utf8'));
         try {
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            require('@babel/register')({
-                presets: ['@babel/preset-env'],
-            });
-            i18n[value].c = yield getCustomizeContent(langPath, value);
+            const customize = path_1.default.join(langPath, `customize/${value}.js`);
+            if (hasCust && utils_1.checkDirExists(customize)) {
+                // eslint-disable-next-line @typescript-eslint/no-var-requires
+                require('@babel/register')({
+                    presets: ['@babel/preset-env'],
+                });
+                i18n[value].c = yield getCustomizeContent(customize);
+            }
         }
         catch (error) {
             utils_1.log('Failed to read custom language pack, please follow the naming rules', 'red');
-            continue;
         }
     }
     const str = `

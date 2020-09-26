@@ -15,10 +15,15 @@ export declare const dealWithOriginalStr: (str: string) => string;
  */
 export declare const checkFileExists: (path: string) => string;
 /**
+ * 检测目标目录是否存在
+ * @param path 目录
+ */
+export declare const checkDirExists: (path: string) => boolean;
+/**
  * 检测目标目录是否存在，不存在则创建
  * @param path 目录
  */
-export declare const checkDirExists: (path: string) => void;
+export declare const mkdirDirUnExists: (path: string) => void;
 /**
  * 是否仅仅包含第三发模块
  * @param chunk
