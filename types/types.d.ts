@@ -9,4 +9,4 @@ export interface IOptions {
     cacheSplit: string;
     type: string[];
 }
-export declare type LogFn = (message: string, color: 'red' | 'blue' | 'green') => void;
+export declare type LogFn = (message: string, color?: 'red' | 'blue' | 'green') => void;

@@ -12,4 +12,4 @@ export interface IOptions {
   type: string[]
 }
 
-export type LogFn = (message: string, color: 'red' | 'blue' | 'green') => void
+export type LogFn = (message: string, color?: 'red' | 'blue' | 'green') => void

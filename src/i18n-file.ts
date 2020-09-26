@@ -148,13 +148,3 @@ export const getCache = (path: string, split: string): string[] => {
   }
   return result
 }
-
-// 写入缓存
-export const writeCache = (
-  path: string,
-  list: Array<string>,
-  split: string
-): void => {
-  const data = list.join(split)
-  fs.appendFileSync(path, data, { encoding: 'utf8' })
-}

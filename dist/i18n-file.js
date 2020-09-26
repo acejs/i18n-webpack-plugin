@@ -137,8 +137,3 @@ exports.getCache = (path, split) => {
     }
     return result;
 };
-// 写入缓存
-exports.writeCache = (path, list, split) => {
-    const data = list.join(split);
-    fs_1.default.appendFileSync(path, data, { encoding: 'utf8' });
-};

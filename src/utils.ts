@@ -25,6 +25,10 @@ export const isHtmlTag = (str: string): boolean => {
   return str.includes('<') && str.includes('</')
 }
 
+export const dealWithOriginalStr = (str: string): string => {
+  return str.trim()
+}
+
 /**
  * 检测目标文件是否存在
  * 若存在返回对应的内容
@@ -56,29 +60,32 @@ export const checkDirExists = (path: string): void => {
 /**
  * 是否仅仅包含第三发模块
  * @param chunk
+ * 临时的解决方案、需要更确切的方案
  */
 export const onlyThirdChunk = (chunk: any): boolean => {
-  let only = true
-  for (const module of chunk.modulesIterable) {
-    if (module.resource === undefined || thirdModulsReg.test(module.resource))
-      continue
-
-    only = false
-  }
-  return only
+  return chunk.chunkReason !== undefined && chunk.chunkReason.includes('name:')
+  // let only = false
+  // for (const module of chunk.modulesIterable) {
+  //   if (thirdModulsReg.test(module.resource)) {
+  //     only = true
+  //   }
+  // }
+  // return only
 }
 
-export const log: LogFn = (message, color) => {
+export const log: LogFn = (message, color = 'blue') => {
   console.log(
     chalk[color](`
 	
-		--------  ${message}！  --------
+    ******************************** I18nWebpackPlugin ********************************
+
+    ${message}
 	
 	`)
   )
 }
 
-export const warn: LogFn = (...args): void => {
-  log(...args)
+export const warn: LogFn = (message, color = 'red'): void => {
+  log(message, color)
   process.exit(0)
 }

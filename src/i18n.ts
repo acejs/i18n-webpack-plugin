@@ -41,7 +41,7 @@ try {
   const file = fs.readFileSync(argv.xlsx)
   data = xlsx.parse(file)[0].data
 } catch ({ message }) {
-  warn(message, 'red')
+  warn(message)
   process.exit(0)
 }
 
@@ -80,9 +80,7 @@ for (const [index, value] of data.entries()) {
     continue
   }
   // 检测是否已经存在
-  if (cacheMap.has(value[target.zh])) continue
-
-  if (value.length !== range.length) {
+  if (cacheMap.has(value[target.zh]) || value.length !== range.length) {
     ++gap
     continue
   }

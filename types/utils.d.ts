@@ -6,6 +6,7 @@ export declare const jsFileReg: RegExp;
 export declare const isType: (target: unknown, type: string) => boolean;
 export declare const isAbsolute: (target: string) => boolean;
 export declare const isHtmlTag: (str: string) => boolean;
+export declare const dealWithOriginalStr: (str: string) => string;
 /**
  * 检测目标文件是否存在
  * 若存在返回对应的内容
@@ -21,6 +22,7 @@ export declare const checkDirExists: (path: string) => void;
 /**
  * 是否仅仅包含第三发模块
  * @param chunk
+ * 临时的解决方案、需要更确切的方案
  */
 export declare const onlyThirdChunk: (chunk: any) => boolean;
 export declare const log: LogFn;

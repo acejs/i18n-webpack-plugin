@@ -45,7 +45,7 @@ try {
     data = node_xlsx_1.default.parse(file)[0].data;
 }
 catch ({ message }) {
-    utils_1.warn(message, 'red');
+    utils_1.warn(message);
     process.exit(0);
 }
 // 获取 语言类型 数组
@@ -78,9 +78,7 @@ for (const [index, value] of data.entries()) {
         continue;
     }
     // 检测是否已经存在
-    if (cacheMap.has(value[target.zh]))
-        continue;
-    if (value.length !== range.length) {
+    if (cacheMap.has(value[target.zh]) || value.length !== range.length) {
         ++gap;
         continue;
     }

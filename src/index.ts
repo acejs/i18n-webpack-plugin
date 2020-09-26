@@ -6,31 +6,23 @@ import generate from '@babel/generator'
 import path from 'path'
 import xlsx from 'node-xlsx'
 import fs from 'fs'
-import { i18nFile, getCache, writeCache } from './i18n-file'
+import { i18nFile, getCache } from './i18n-file'
 import {
   isType,
   chReg,
   jsFileReg,
-  chRegAll,
   isHtmlTag,
   onlyThirdChunk,
   checkDirExists,
   log,
   warn,
   isAbsolute,
+  dealWithOriginalStr,
 } from './utils'
 import { StringFn, FILTER, IOptions, VoidFn } from './types'
 import { HtmlTagObject } from 'html-webpack-plugin'
 import { ConcatSource } from 'webpack-sources'
 import { Compiler, compilation } from 'webpack'
-
-const i18nTemplate = template.expression(`
-  window.i18n[%%key%%]
-`)
-
-const ni18nTemplate = template.expression(`
-  %%value%%
-`)
 
 class I18nWebpackPlugin {
   path: string
@@ -43,7 +35,7 @@ class I18nWebpackPlugin {
 
   cacheSplit = '^+-+^'
 
-  type: string[]
+  type = ['zh', 'en']
 
   webpackConfig = {
     publicPath: '',
@@ -55,22 +47,18 @@ class I18nWebpackPlugin {
     const { path, action, getLanguage, filter, cacheSplit, type } = options
 
     if (!path || !isAbsolute(path))
-      warn(
-        `${this.constructor.name} - options path is required and must be absolute`,
-        'red'
-      )
+      warn(`options path is required and must be absolute`)
 
     if (typeof getLanguage !== 'function')
-      warn(
-        `${this.constructor.name} - options getLanguage must be a function`,
-        'red'
-      )
+      warn(`options getLanguage must be a function`)
 
     this.path = path
     this.getLanguage = getLanguage
     this.action = action
+
     cacheSplit && (this.cacheSplit = cacheSplit)
-    this.type = type
+
+    Array.isArray(type) && (this.type = type)
 
     if (typeof filter === 'function') {
       this.filter = filter
@@ -92,6 +80,13 @@ class I18nWebpackPlugin {
 
     checkDirExists(self.path)
 
+    if (mode === 'development' && this.action === 'collect') {
+      warn(`
+        Don't collect chinese in development mode.
+        Set action to empty or delete it！
+      `)
+    }
+
     if (this.action === 'collect') {
       const callback = (compilation: compilation.Compilation): void => {
         collectChineseFromChunk(compilation, self)
@@ -110,8 +105,7 @@ class I18nWebpackPlugin {
       } catch (error) {
         warn(
           `No valid Chinese language pack detected, 
-           Please check the legality of the Chinese language pack naming!`,
-          'red'
+           Please check the legality of the Chinese language pack naming!`
         )
       }
 
@@ -128,8 +122,7 @@ class I18nWebpackPlugin {
 
           if (!alterAssetTags) {
             warn(
-              `Unable to find an instance of HtmlWebpackPlugin in the current compilation`,
-              'red'
+              `Unable to find an instance of HtmlWebpackPlugin in the current compilation`
             )
           }
 
@@ -167,36 +160,26 @@ class I18nWebpackPlugin {
           compilation.hooks.optimizeChunkAssets.tap(
             self.constructor.name,
             (chunks) => {
+              const i18nTemplate = template.expression(`
+                window.i18n[%%key%%]
+              `)
+
               const visitor = {
                 enter(path: NodePath) {
                   if (isStringLiteral(path.node)) {
                     let { value } = path.node
-                    if (chReg.test(value) && self.filter(value)) {
-                      value = value.trim()
-                      if (isHtmlTag(value)) {
-                        let needReplace = false
-                        const matches = value.match(chRegAll) || []
-                        for (const match of matches.values()) {
-                          const key = cacheMap.get(match)
-                          if (!key) continue
-                          value = value.replace(match, `window.i18n.${key}`)
-                          needReplace = true
-                        }
-                        if (needReplace) {
-                          path.replaceWith(
-                            ni18nTemplate({
-                              value: stringLiteral(value),
-                            })
-                          )
-                        }
-                      } else {
-                        if (cacheMap.has(value)) {
-                          const key = cacheMap.get(value)
-                          const tAst = i18nTemplate({
-                            key: stringLiteral(key),
-                          })
-                          path.replaceWith(tAst)
-                        }
+
+                    if (chReg.test(value) && !isHtmlTag(value)) {
+                      value = dealWithOriginalStr(value)
+
+                      if (cacheMap.has(value)) {
+                        const key = cacheMap.get(value)
+
+                        const tAst = i18nTemplate({
+                          key: stringLiteral(key),
+                        })
+
+                        path.replaceWith(tAst)
                       }
                     }
                   }
@@ -257,33 +240,19 @@ function collectChineseFromChunk(
 
     const arr: string[] = []
 
-    function push(value: string) {
-      value = value.trim()
-      if (
-        value &&
-        !arr.includes(value) &&
-        !cacheList.includes(value) &&
-        chReg.test(value)
-      ) {
-        arr.push(value)
-      }
-    }
-
     const visitor = {
       enter(path: NodePath) {
         if (isStringLiteral(path.node)) {
-          const { value } = path.node
+          let { value } = path.node
+          if (chReg.test(value) && !isHtmlTag(value)) {
+            value = dealWithOriginalStr(value)
 
-          if (chReg.test(value) && self.filter(value)) {
-            if (isHtmlTag(value)) {
-              const matches = value.match(chRegAll)
-              if (Array.isArray(matches) && matches.length > 0) {
-                matches.forEach((match) => {
-                  push(match)
-                })
-              }
-            } else {
-              push(value)
+            if (
+              self.filter(value) &&
+              !arr.includes(value) &&
+              !cacheList.includes(value)
+            ) {
+              arr.push(value)
             }
           }
         }
@@ -333,11 +302,14 @@ function collectChineseFromChunk(
       (err) => {
         if (err) return reject(err)
         // 写入缓存
-        writeCache(
-          path.resolve(self.path, '.cache'),
-          cacheList.concat(arr),
-          self.cacheSplit
-        )
+        const cache =
+          cacheList.length > 0
+            ? self.cacheSplit + arr.join(self.cacheSplit)
+            : arr.join(self.cacheSplit)
+
+        fs.appendFileSync(path.resolve(self.path, '.cache'), cache, {
+          encoding: 'utf8',
+        })
         return resolve('Scan successfully!')
       }
     )

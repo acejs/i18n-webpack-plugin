@@ -1,5 +1,5 @@
 {
-  "name": "i18n-webpack-plugin",
+  "name": "@cdjs/i18n-webpack-plugin",
   "version": "0.0.1",
   "description": "I18n support based on webpack",
   "main": "dist/index.js",

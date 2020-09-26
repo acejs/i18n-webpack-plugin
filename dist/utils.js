@@ -22,6 +22,9 @@ exports.isAbsolute = (target) => {
 exports.isHtmlTag = (str) => {
     return str.includes('<') && str.includes('</');
 };
+exports.dealWithOriginalStr = (str) => {
+    return str.trim();
+};
 /**
  * 检测目标文件是否存在
  * 若存在返回对应的内容
@@ -53,24 +56,28 @@ exports.checkDirExists = (path) => {
 /**
  * 是否仅仅包含第三发模块
  * @param chunk
+ * 临时的解决方案、需要更确切的方案
  */
 exports.onlyThirdChunk = (chunk) => {
-    let only = true;
-    for (const module of chunk.modulesIterable) {
-        if (module.resource === undefined || exports.thirdModulsReg.test(module.resource))
-            continue;
-        only = false;
-    }
-    return only;
+    return chunk.chunkReason !== undefined && chunk.chunkReason.includes('name:');
+    // let only = false
+    // for (const module of chunk.modulesIterable) {
+    //   if (thirdModulsReg.test(module.resource)) {
+    //     only = true
+    //   }
+    // }
+    // return only
 };
-exports.log = (message, color) => {
+exports.log = (message, color = 'blue') => {
     console.log(chalk_1.default[color](`
 	
-		--------  ${message}！  --------
+    ******************************** I18nWebpackPlugin ********************************
+
+    ${message}
 	
 	`));
 };
-exports.warn = (...args) => {
-    exports.log(...args);
+exports.warn = (message, color = 'red') => {
+    exports.log(message, color);
     process.exit(0);
 };
