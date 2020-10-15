@@ -1,10 +1,10 @@
 {
   "name": "@cdjs/i18n-webpack-plugin",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "I18n support based on webpack",
   "main": "dist/index.js",
   "repository": "https://github.com/acejs/i18n-webpack-plugin.git",
-  "author": "<15380598700@163.com>",
+  "author": "15380598700@163.com",
   "license": "MIT",
   "private": false,
   "types": "types/index.d.ts",
@@ -33,7 +33,6 @@
     "node-xlsx": "^0.15.0",
     "spark-md5": "^3.0.1",
     "terser": "^5.3.2",
-    "webpack": "^4.44.2",
     "webpack-sources": "^1.4.3",
     "yargs": "^16.0.3"
   },

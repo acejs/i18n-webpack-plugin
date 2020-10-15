@@ -10,7 +10,7 @@ declare class I18nWebpackPlugin {
     webpackConfig: {
         publicPath: string;
         mode: string;
-        outputPath: string;
+        path: string;
     };
     constructor(options: IOptions);
     apply(compiler: Compiler): void;

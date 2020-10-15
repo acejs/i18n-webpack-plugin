@@ -19,7 +19,13 @@ import {
   isAbsolute,
   dealWithOriginalStr,
 } from './utils'
-import { StringFn, FILTER, IOptions, VoidFn } from './types'
+import {
+  StringFn,
+  FILTER,
+  IOptions,
+  VoidFn,
+  CompilationHooksWithHtml,
+} from './types'
 import { HtmlTagObject } from 'html-webpack-plugin'
 import { ConcatSource } from 'webpack-sources'
 import { Compiler, compilation } from 'webpack'
@@ -40,7 +46,7 @@ class I18nWebpackPlugin {
   webpackConfig = {
     publicPath: '',
     mode: 'development',
-    outputPath: '',
+    path: '',
   }
 
   constructor(options: IOptions) {
@@ -70,12 +76,13 @@ class I18nWebpackPlugin {
   apply(compiler: Compiler): void {
     const self = this
     const { mode, output } = compiler.options
+    const { publicPath, path: outPath } = output || {}
 
     // 获取 webpack 配置
     Object.assign(this.webpackConfig, {
-      publicPath: output?.publicPath || '/',
+      publicPath: publicPath || '',
       mode,
-      outputPath: output?.path || path.join(process.cwd(), 'dist'),
+      path: outPath || path.join(process.cwd(), 'dist'),
     })
 
     mkdirDirUnExists(self.path)
@@ -113,27 +120,31 @@ class I18nWebpackPlugin {
       compiler.hooks.compilation.tap(
         self.constructor.name,
         (compilation: compilation.Compilation) => {
-          let alterAssetTags
+          // This is set in html-webpack-plugin pre-v4.
+          let hook = (compilation.hooks as CompilationHooksWithHtml)
+            .htmlWebpackPluginAlterAssetTags
 
-          for (const [key, value] of Object.entries(compilation.hooks)) {
-            if (key === 'htmlWebpackPluginAlterAssetTags')
-              alterAssetTags = value
-          }
+          if (!hook) {
+            if (!Array.isArray(compiler.options.plugins)) {
+              warn(`No plugin has registered.`)
+              process.exit(0)
+            }
 
-          if (!alterAssetTags) {
-            warn(
-              `Unable to find an instance of HtmlWebpackPlugin in the current compilation`
+            const [htmlPlugin] = compiler.options.plugins.filter(
+              (plugin) => plugin.constructor.name === 'HtmlWebpackPlugin'
             )
+
+            // temp
+            hook = (htmlPlugin.constructor as any).getHooks(compilation)
+              .alterAssetTagGroups
           }
 
-          alterAssetTags.tapAsync(
+          hook.tapAsync(
             this.constructor.name,
             async (htmlPluginData: any, cb: VoidFn) => {
               const result = await i18nFile(self)
               input = result.input
               filename = result.filename
-
-              const { head } = htmlPluginData
 
               const o: HtmlTagObject = {
                 tagName: 'script',
@@ -148,11 +159,14 @@ class I18nWebpackPlugin {
               } else {
                 o.attributes = {
                   type: 'text/javascript',
-                  src: `/${path.join(self.webpackConfig.publicPath, filename)}`,
+                  src: `${self.webpackConfig.publicPath}${filename}`,
                 }
               }
 
-              head.unshift(o)
+              htmlPluginData.plugin.version >= 4
+                ? htmlPluginData.headTags.unshift(o)
+                : htmlPluginData.head.unshift(o)
+
               cb()
             }
           )
@@ -213,7 +227,7 @@ class I18nWebpackPlugin {
           this.constructor.name,
           (compilation, cb: VoidFn) => {
             fs.writeFile(
-              path.resolve(self.webpackConfig.outputPath, filename),
+              path.resolve(self.webpackConfig.path, filename),
               input,
               { encoding: 'utf8' },
               (err) => {

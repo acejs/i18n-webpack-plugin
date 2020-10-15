@@ -31,7 +31,7 @@ class I18nWebpackPlugin {
         this.webpackConfig = {
             publicPath: '',
             mode: 'development',
-            outputPath: '',
+            path: '',
         };
         const { path, action, getLanguage, filter, cacheSplit, type } = options;
         if (!path || !utils_1.isAbsolute(path))
@@ -53,11 +53,12 @@ class I18nWebpackPlugin {
     apply(compiler) {
         const self = this;
         const { mode, output } = compiler.options;
+        const { publicPath, path: outPath } = output || {};
         // 获取 webpack 配置
         Object.assign(this.webpackConfig, {
-            publicPath: (output === null || output === void 0 ? void 0 : output.publicPath) || '/',
+            publicPath: publicPath || '',
             mode,
-            outputPath: (output === null || output === void 0 ? void 0 : output.path) || path_1.default.join(process.cwd(), 'dist'),
+            path: outPath || path_1.default.join(process.cwd(), 'dist'),
         });
         utils_1.mkdirDirUnExists(self.path);
         if (mode === 'development' && this.action === 'collect') {
@@ -88,19 +89,23 @@ class I18nWebpackPlugin {
             }
             // load i18n package
             compiler.hooks.compilation.tap(self.constructor.name, (compilation) => {
-                let alterAssetTags;
-                for (const [key, value] of Object.entries(compilation.hooks)) {
-                    if (key === 'htmlWebpackPluginAlterAssetTags')
-                        alterAssetTags = value;
+                // This is set in html-webpack-plugin pre-v4.
+                let hook = compilation.hooks
+                    .htmlWebpackPluginAlterAssetTags;
+                if (!hook) {
+                    if (!Array.isArray(compiler.options.plugins)) {
+                        utils_1.warn(`No plugin has registered.`);
+                        process.exit(0);
+                    }
+                    const [htmlPlugin] = compiler.options.plugins.filter((plugin) => plugin.constructor.name === 'HtmlWebpackPlugin');
+                    // temp
+                    hook = htmlPlugin.constructor.getHooks(compilation)
+                        .alterAssetTagGroups;
                 }
-                if (!alterAssetTags) {
-                    utils_1.warn(`Unable to find an instance of HtmlWebpackPlugin in the current compilation`);
-                }
-                alterAssetTags.tapAsync(this.constructor.name, (htmlPluginData, cb) => __awaiter(this, void 0, void 0, function* () {
+                hook.tapAsync(this.constructor.name, (htmlPluginData, cb) => __awaiter(this, void 0, void 0, function* () {
                     const result = yield i18n_file_1.i18nFile(self);
                     input = result.input;
                     filename = result.filename;
-                    const { head } = htmlPluginData;
                     const o = {
                         tagName: 'script',
                         voidTag: false,
@@ -114,10 +119,12 @@ class I18nWebpackPlugin {
                     else {
                         o.attributes = {
                             type: 'text/javascript',
-                            src: `/${path_1.default.join(self.webpackConfig.publicPath, filename)}`,
+                            src: `${self.webpackConfig.publicPath}${filename}`,
                         };
                     }
-                    head.unshift(o);
+                    htmlPluginData.plugin.version >= 4
+                        ? htmlPluginData.headTags.unshift(o)
+                        : htmlPluginData.head.unshift(o);
                     cb();
                 }));
                 compilation.hooks.optimizeChunkAssets.tap(self.constructor.name, (chunks) => {
@@ -159,7 +166,7 @@ class I18nWebpackPlugin {
             // production load by script
             if (self.webpackConfig.mode === 'production') {
                 compiler.hooks.done.tapAsync(this.constructor.name, (compilation, cb) => {
-                    fs_1.default.writeFile(path_1.default.resolve(self.webpackConfig.outputPath, filename), input, { encoding: 'utf8' }, (err) => {
+                    fs_1.default.writeFile(path_1.default.resolve(self.webpackConfig.path, filename), input, { encoding: 'utf8' }, (err) => {
                         if (err)
                             throw err;
                         cb();

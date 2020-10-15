@@ -1,5 +1,7 @@
+import { compilation } from 'webpack';
+import { AsyncSeriesWaterfallHook } from 'tapable';
 export declare type StringFn = () => string;
-export declare type VoidFn = () => string;
+export declare type VoidFn = () => void;
 export declare type FILTER = (str: string) => boolean;
 export interface IOptions {
     path: string;
@@ -10,3 +12,6 @@ export interface IOptions {
     type: string[];
 }
 export declare type LogFn = (message: string, color?: 'red' | 'blue' | 'green') => void;
+export interface CompilationHooksWithHtml extends compilation.CompilationHooks {
+    htmlWebpackPluginAlterAssetTags: AsyncSeriesWaterfallHook;
+}
