@@ -1,2 +1,2 @@
-#!/usr/bin/env ts-node --script-mode --transpile-only
+#!/usr/bin/env ts-node
 export {};

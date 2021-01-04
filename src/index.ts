@@ -1,82 +1,89 @@
 import { parse } from '@babel/parser'
 import traverse, { NodePath } from '@babel/traverse'
-import { isStringLiteral, stringLiteral } from '@babel/types'
+import { isStringLiteral, stringLiteral, binaryExpression } from '@babel/types'
 import template from '@babel/template'
 import generate from '@babel/generator'
 import path from 'path'
 import xlsx from 'node-xlsx'
 import fs from 'fs'
-import { i18nFile, getCache } from './i18n-file'
+import { i18nFile, fromExistsExcel } from './i18n-file'
 import {
-  isType,
-  chReg,
+  onlyChReg,
+  needEscapeSymbol,
   jsFileReg,
-  isHtmlTag,
-  onlyThirdChunk,
+  ignoreChunk,
   mkdirDirUnExists,
   log,
   warn,
-  isAbsolute,
-  dealWithOriginalStr,
+  defaultOptions,
+  configFileExists,
 } from './utils'
-import {
-  StringFn,
-  FILTER,
-  IOptions,
-  VoidFn,
-  CompilationHooksWithHtml,
-} from './types'
+import { IProps, IOptions, VoidFn, CompilationHooksWithHtml } from './types'
 import { HtmlTagObject } from 'html-webpack-plugin'
 import { ConcatSource } from 'webpack-sources'
 import { Compiler, compilation } from 'webpack'
 
+const pluginName = 'I18nWebpackPlugin'
+
 class I18nWebpackPlugin {
-  path: string
-
-  getLanguage: StringFn
-
-  action: string
-
-  filter: FILTER = (value) => value.trim() !== ''
-
-  cacheSplit = '^+-+^'
-
-  type = ['zh', 'en']
-
   webpackConfig = {
     publicPath: '',
     mode: 'development',
     path: '',
   }
+  options: IOptions
 
-  constructor(options: IOptions) {
-    const { path, action, getLanguage, filter, cacheSplit, type } = options
-
-    if (!path || !isAbsolute(path))
-      warn(`options path is required and must be absolute`)
-
-    if (typeof getLanguage !== 'function')
-      warn(`options getLanguage must be a function`)
-
-    this.path = path
-    this.getLanguage = getLanguage
-    this.action = action
-
-    cacheSplit && (this.cacheSplit = cacheSplit)
-
-    Array.isArray(type) && (this.type = type)
-
-    if (typeof filter === 'function') {
-      this.filter = filter
-    } else if (isType(filter, 'RegExp')) {
-      this.filter = (value) => value.replace(filter, '') !== ''
+  constructor(props: IProps) {
+    const init = {
+      root: '',
+      action: '',
+      configFile: '',
+      type: [],
+      customize: '',
+      excel: '',
+      ignoreEndSymbol: ['：', ':'],
+      escapeSymbolReg: undefined,
     }
+    const { configFile = '', action = '' } = props
+    // merge props
+    Object.assign(init, { ...defaultOptions, configFile, action })
+
+    this.options = init
   }
 
   apply(compiler: Compiler): void {
     const self = this
-    const { mode, output } = compiler.options
-    const { publicPath, path: outPath } = output || {}
+    const {
+      mode,
+      output: { publicPath, path: outPath } = {},
+    } = compiler.options
+
+    // 开发模式下禁止提取多语言
+    if (mode === 'development' && this.options.action === 'collect') {
+      warn(`
+        Don't collect chinese in development mode.
+        Set action to empty or delete it！
+      `)
+    }
+
+    // 未定义语言包目录，默认获取项目根目录下的语言配置
+    !this.options.configFile &&
+      (this.options.configFile = path.join(process.cwd(), 'i18n.config.js'))
+    // 检测配置文件是否存在
+    configFileExists(this.options.configFile)
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    Object.assign(this.options, require(this.options.configFile))
+
+    // 生成过滤末尾符号的正则
+    const escapeSymbol = this.options.ignoreEndSymbol
+      .map((i) => (needEscapeSymbol.has(i) ? `\\${i}` : i))
+      .join('|')
+
+    this.options.escapeSymbolReg = new RegExp(
+      `(\\S*[\\p{Unified_Ideograph}|a-zA-Z0-9]+)\\s*[${escapeSymbol}]+$`,
+      'u'
+    )
 
     // 获取 webpack 配置
     Object.assign(this.webpackConfig, {
@@ -85,42 +92,51 @@ class I18nWebpackPlugin {
       path: outPath || path.join(process.cwd(), 'dist'),
     })
 
-    mkdirDirUnExists(self.path)
+    // 初始化文件目录
+    mkdirDirUnExists(this.options.root) // 根目录
+    mkdirDirUnExists(path.join(this.options.root, this.options.excel)) // excel 文件
 
-    if (mode === 'development' && this.action === 'collect') {
-      warn(`
-        Don't collect chinese in development mode.
-        Set action to empty or delete it！
-      `)
-    }
-
-    if (this.action === 'collect') {
+    if (this.options.action === 'collect') {
       const callback = (compilation: compilation.Compilation): void => {
         collectChineseFromChunk(compilation, self)
           .then((res) => void log(res, 'blue'))
           .catch(({ message }) => void log(message, 'red'))
           .finally(() => void process.exit(0))
       }
-      compiler.hooks.emit.tap(self.constructor.name, callback)
+      compiler.hooks.emit.tap(pluginName, callback)
     } else {
-      let input: string, filename: string
-
+      // modify devtool in development
       if (mode === 'development') compiler.options.devtool = undefined
 
-      try {
-        addCache(self)
-      } catch (error) {
-        warn(
-          `No valid Chinese language pack detected, 
-           Please check the legality of the Chinese language pack naming!`
-        )
+      const all = fromExistsExcel(self.options, 'all')
+      const zh = all.zh
+      const len = zh.length
+      // 以中文字符的长度为准，判断所有的语言类型是否等长
+      for (const lang of Object.values(all)) {
+        if (lang.length !== len) {
+          warn('Exists untranslated characters, please check!')
+          process.exit(0)
+        }
       }
+      // zh -> i18n00001
+      const cacheMap = new Map<string, string>()
+      // index -> i18n00001
+      const cacheIndex = new Map<number, string>()
+      let i = 1
+      for (const lang of zh) {
+        const index = `i18n${String(i).padStart(5, '0')}`
+        cacheIndex.set(i, index)
+        cacheMap.set(lang, index)
+        i++
+      }
+
+      let input: string, filename: string
 
       // load i18n package
       compiler.hooks.compilation.tap(
-        self.constructor.name,
+        pluginName,
         (compilation: compilation.Compilation) => {
-          // This is set in html-webpack-plugin pre-v4.
+          // This is set for html-webpack-plugin pre-v4.
           let hook = (compilation.hooks as CompilationHooksWithHtml)
             .htmlWebpackPluginAlterAssetTags
 
@@ -138,105 +154,104 @@ class I18nWebpackPlugin {
             hook = (htmlPlugin.constructor as any).getHooks(compilation)
               .alterAssetTagGroups
           }
+          // load i18n package with html-webpack-plugin
+          hook.tapAsync(pluginName, async (htmlPluginData: any, cb: VoidFn) => {
+            const result = await i18nFile(self, all, cacheIndex)
+            input = result.input
+            filename = result.filename
 
-          hook.tapAsync(
-            this.constructor.name,
-            async (htmlPluginData: any, cb: VoidFn) => {
-              const result = await i18nFile(self)
-              input = result.input
-              filename = result.filename
-
-              const o: HtmlTagObject = {
-                tagName: 'script',
-                voidTag: false,
-                attributes: {
-                  type: 'text/javascript',
-                },
-              }
-
-              if (self.webpackConfig.mode === 'development') {
-                o.innerHTML = input
-              } else {
-                o.attributes = {
-                  type: 'text/javascript',
-                  src: `${self.webpackConfig.publicPath}${filename}`,
-                }
-              }
-
-              htmlPluginData.plugin.version >= 4
-                ? htmlPluginData.headTags.unshift(o)
-                : htmlPluginData.head.unshift(o)
-
-              cb()
+            const o: HtmlTagObject = {
+              tagName: 'script',
+              voidTag: false,
+              attributes: {
+                type: 'text/javascript',
+              },
             }
-          )
 
-          compilation.hooks.optimizeChunkAssets.tap(
-            self.constructor.name,
-            (chunks) => {
-              const i18nTemplate = template.expression(`
+            if (self.webpackConfig.mode === 'development') {
+              o.innerHTML = input
+            } else {
+              o.attributes = {
+                type: 'text/javascript',
+                src: `${self.webpackConfig.publicPath}${filename}`,
+              }
+            }
+
+            htmlPluginData.plugin.version >= 4
+              ? htmlPluginData.headTags.unshift(o)
+              : htmlPluginData.head.unshift(o)
+
+            cb()
+          })
+
+          compilation.hooks.optimizeChunkAssets.tap(pluginName, (chunks) => {
+            const i18nTemplate = template.expression(`
                 window.i18n[%%key%%]
               `)
 
-              const visitor = {
-                enter(path: NodePath) {
-                  if (isStringLiteral(path.node)) {
-                    let { value } = path.node
+            const visitor = {
+              enter(path: NodePath) {
+                if (isStringLiteral(path.node)) {
+                  const value = path.node.value.trim()
 
-                    if (chReg.test(value) && !isHtmlTag(value)) {
-                      value = dealWithOriginalStr(value)
+                  if (onlyChReg.test(value)) {
+                    const match = value.match(self.options.escapeSymbolReg!)
 
+                    if (match && match[1]) {
+                      const original = match[1]
+
+                      if (cacheMap.has(original)) {
+                        const exists = value.replace(original, '')
+                        path.replaceWith(
+                          binaryExpression(
+                            '+',
+                            i18nTemplate({
+                              key: stringLiteral(cacheMap.get(original)!),
+                            }),
+                            stringLiteral(exists)
+                          )
+                        )
+                      }
+                    } else {
                       if (cacheMap.has(value)) {
-                        const key = cacheMap.get(value)
-
-                        const tAst = i18nTemplate({
-                          key: stringLiteral(key),
-                        })
-
-                        path.replaceWith(tAst)
+                        path.replaceWith(
+                          i18nTemplate({
+                            key: stringLiteral(cacheMap.get(value)!),
+                          })
+                        )
                       }
                     }
+
+                    path.skip()
                   }
-                },
-              }
-
-              for (const chunk of chunks.values()) {
-                // 跳过仅包含第三方模块的chunk
-                if (onlyThirdChunk(chunk)) continue
-
-                for (const filename of chunk.files.values()) {
-                  if (!jsFileReg.test(filename)) continue
-                  const source = compilation.assets[filename].source()
-                  const ast = parse(source, { sourceType: 'script' })
-
-                  traverse(ast, visitor)
-
-                  compilation.assets[filename] = new ConcatSource(
-                    generate(ast).code
-                  )
                 }
+              },
+            }
+
+            for (const chunk of chunks.values()) {
+              // 跳过仅包含第三方模块的chunk
+              if (ignoreChunk(chunk)) continue
+
+              for (const file of chunk.files.values()) {
+                if (!jsFileReg.test(file)) continue
+                const source = compilation.assets[file].source()
+                const ast = parse(source, { sourceType: 'script' })
+
+                traverse(ast, visitor)
+
+                compilation.assets[file] = new ConcatSource(generate(ast).code)
               }
             }
-          )
+          })
         }
       )
 
-      // production load by script
+      // production mode load i18n by script
       if (self.webpackConfig.mode === 'production') {
-        compiler.hooks.done.tapAsync(
-          this.constructor.name,
-          (compilation, cb: VoidFn) => {
-            fs.writeFile(
-              path.resolve(self.webpackConfig.path, filename),
-              input,
-              { encoding: 'utf8' },
-              (err) => {
-                if (err) throw err
-                cb()
-              }
-            )
-          }
-        )
+        compiler.hooks.emit.tapAsync(pluginName, (compilation, cb) => {
+          compilation.assets[filename] = new ConcatSource(input)
+          cb()
+        })
       }
     }
   }
@@ -247,27 +262,25 @@ function collectChineseFromChunk(
   self: I18nWebpackPlugin
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const cacheList = getCache(
-      path.resolve(self.path, '.cache'),
-      self.cacheSplit
-    )
+    // 从历史 excel 文件中获取已存在的语言
+    const exists = fromExistsExcel(self.options, 'zh')
 
-    const arr: string[] = []
+    const cache = new Set((exists.zh || []).concat(exists.ignore || []))
+
+    const { type, root, excel, escapeSymbolReg } = self.options
+
+    const set = new Set<string>()
 
     const visitor = {
       enter(path: NodePath) {
         if (isStringLiteral(path.node)) {
-          let { value } = path.node
-          if (chReg.test(value) && !isHtmlTag(value)) {
-            value = dealWithOriginalStr(value)
+          const value = path.node.value.trim()
 
-            if (
-              self.filter(value) &&
-              !arr.includes(value) &&
-              !cacheList.includes(value)
-            ) {
-              arr.push(value)
-            }
+          if (onlyChReg.test(value) && !cache.has(value)) {
+            const match = escapeSymbolReg && value.match(escapeSymbolReg)
+
+            if (match) !cache.has(match[1]) && set.add(match[1])
+            else set.add(value)
           }
         }
       },
@@ -275,7 +288,7 @@ function collectChineseFromChunk(
 
     for (const chunk of compilation.chunks.values()) {
       // 跳过仅包含第三方模块的chunk
-      if (onlyThirdChunk(chunk)) continue
+      if (ignoreChunk(chunk)) continue
 
       const { files } = chunk
 
@@ -291,59 +304,31 @@ function collectChineseFromChunk(
       }
     }
 
-    if (arr.length === 0) {
+    if (set.size === 0) {
       return resolve(
         'Scanning is complete, no new Chinese characters are detected!'
       )
     }
 
-    const data = [self.type]
+    const data = [type]
 
-    arr.forEach((ch) => {
+    for (const ch of set) {
       data.push([ch])
-    })
+    }
 
-    const buffer = xlsx.build([{ name: 'i18n', data }])
-    const now = Date.now()
-
-    // 检测目录是否存在
-    mkdirDirUnExists(path.join(self.path, 'excel'))
+    const name = `i18n-${Date.now()}.xlsx`
+    const buffer = xlsx.build([{ name, data }])
 
     fs.writeFile(
-      path.resolve(self.path, 'excel', `i18n-${now}.xlsx`),
+      path.resolve(root, excel, name),
       new Uint8Array(buffer),
       { flag: 'w' },
       (err) => {
         if (err) return reject(err)
-        // 写入缓存
-        const cache =
-          cacheList.length > 0
-            ? self.cacheSplit + arr.join(self.cacheSplit)
-            : arr.join(self.cacheSplit)
-
-        fs.appendFileSync(path.resolve(self.path, '.cache'), cache, {
-          encoding: 'utf8',
-        })
         return resolve('Scan successfully!')
       }
     )
   })
-}
-
-/**
- * cache
- */
-const cacheMap = new Map()
-function addCache(plugin: I18nWebpackPlugin): void {
-  const { path: cachePath, type } = plugin
-  const zhJson = fs.readFileSync(
-    path.join(cachePath, `${type[0]}.json`),
-    'utf8'
-  )
-  const zh = JSON.parse(zhJson)
-  for (const [key, value] of Object.entries(zh)) {
-    cacheMap.set(value, key)
-  }
 }
 
 export default I18nWebpackPlugin

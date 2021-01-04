@@ -21,17 +21,37 @@ const I18nWebpackPlugin = require('@cdjs/i18n-webpack-plugin')
 plugins: [
   ...
   new I18nWebpackPlugin({
-    path: path.resolve(__dirname, 'src/i18n'),
-    getLanguage: () => {
-      ...
-    },  // 同步函数，测试或生产环境用于获取当前的语言环境
+    action: '',  '' | 'collect',   // collect 为提取语言
+    configFile: path.join(process.cwd(), 'i18n.config.js')
   })
 ]
+
+// i18n.config.js
+module.exports = {
+  root: path.join(__dirname, 'src/i18n'), // 国际化语言包路径
+  type: ['zh', 'en'],
+  customize: 'customize', // 自定义语言包路径，相对于 root 路径，默认 customize
+  excel: 'excel', // excel 文件路径，相对于 root 路径，默认 excel
+  getLanguage: () => {
+    // 获取当前语言环境的方法
+    const list = ['zh', 'en']
+    let language = 'zh'
+    list.some(lang => {
+      if (location.pathname.includes(`/${lang}`)) {
+        language = lang
+        return true
+      }
+    })
+    return language
+  },
+  // 忽略末尾的符号 删除？ = 删除！ = 删除： = 删除
+  ignoreEndSymbol: ['？', '?', '!', ',', '，', '√', '：', '+', '.', ':', '、', '！' ]
+}
 ```
 
 #### 具体参数
 
-- #### **` path`: string**
+- #### **` root`: string**
 
   `require: true`
 
@@ -57,15 +77,21 @@ plugins: [
 
   如果指定的值为 `collect`, 运行后会自动提取项目中的中文字符，并以 _excel_ 格式写入 `path` 参数指定的目录中，提取完毕后，会自动退出运行
 
-- #### **`filter`: Regex | (v: string) => boolean**
+- #### **`customize`: string**
 
-  `require: false`
+  `require: false | default: 'customize'`
 
-  自定义规则，用于过滤提取的字符
+  自定义语言包存放路径
 
-- #### **`cacheSplit`: string**
+- #### **`excel`: string**
 
-  `require: false | default: '^+-+^'`
+  `require: false | default: 'excel`
+
+  自定义语言包存放路径
+
+- #### **`ignoreEndSymbol`: string[]**
+
+  `require: false | default: [':', '：']`
 
   用于缓存文件中，字符的分隔符，第一次运行后，不建议再修改
 
@@ -74,6 +100,20 @@ plugins: [
 将 `collect` 参数配置成 _collect_, 并直接执行打包流程
 
 > collect 参数仅用于提取中文字符，提取后，请将该参数置空或删除。
+
+### 部分不需要国际化处理
+
+> `v0.2.0` 版本增加了对部分内容非国际化的支持，需满足以下条件：
+>
+> 1.  该部分内容必须是位于单文件中，并且该文件中所有的内容都不会支持国际化
+> 2.  必须以 _动态导入_ 的方式加载该文件
+
+```javascript
+// a.tsx 中的内容不需要国际化支持
+// b.tsx 中
+import('./a.tsx?withouti18n=true')
+// 此时 a.tsx 中的所有内容，包括导入的其他文件都不会被本插件所翻译
+```
 
 ### 命令行指令
 
@@ -89,12 +129,13 @@ plugins: [
 ```
 
 ```shell
-yarn/npm i18n --xlsx/-x xxxx --out/-o xxxxx [--type/-t]
+// 用于查询中文字符位于哪些文件中
+yarn/npm i18n --find/-f xxxx dddd eee
 
-参数如下：
-xlsx: [string / required]    			    指向 Excel 文件的路径
-out: [string / required]  			      生成文件和读取现有语言文件的路径
-type: [string / default: 'zh'|'en']	  国际化语言类型，"|" 分隔的字符串
+// 用于合并多个excel文件
+// 不传参数默认合并所有的 excel 文件
+// 或者指定要和的excel文件（注：默认都是与i18n.xlsx合并）
+yarn/npm i18n --merge/-m xxx.xlsx
 ```
 
 ### 复杂场景配置
@@ -187,4 +228,3 @@ let html = `
 
 - 低版本的 Webpack 支持，目前的开发和测试的环境为： Webpack4+、babel7+
 - 对 node_modules 下的模块打包出来的 chunk 的判断不足
-- 部分内容要求支持国际化的项目，暂未提供支持。不过以模块化方式开发的项目，是不是能得到较好的支持，还有待探究

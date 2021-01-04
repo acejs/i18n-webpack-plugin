@@ -1,18 +1,13 @@
-import { StringFn, FILTER, IOptions } from './types';
+import { IProps, IOptions } from './types';
 import { Compiler } from 'webpack';
 declare class I18nWebpackPlugin {
-    path: string;
-    getLanguage: StringFn;
-    action: string;
-    filter: FILTER;
-    cacheSplit: string;
-    type: string[];
     webpackConfig: {
         publicPath: string;
         mode: string;
         path: string;
     };
-    constructor(options: IOptions);
+    options: IOptions;
+    constructor(props: IProps);
     apply(compiler: Compiler): void;
 }
 export default I18nWebpackPlugin;

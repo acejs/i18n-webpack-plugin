@@ -2,14 +2,16 @@ import SparkMD5 from 'spark-md5'
 import { transform } from '@babel/core'
 import fs from 'fs'
 import path from 'path'
-import { checkFileExists, log, isType, checkDirExists, warn } from './utils'
+import { log, checkDirExists } from './utils'
 import plugin from './index'
+import xlsx from 'node-xlsx'
 import { minify } from 'terser'
+import { IOptions } from './types'
 
 const prefix = '%%function%%'
 /**
  * 获取用户自定义的内容 主要是对自定义函数、方法的处理
- * @param customize
+ * @param customize 文件夹
  */
 const getCustomizeContent = (customize: string): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -34,7 +36,7 @@ function babelCode(str: string): string {
     configFile: false, // 不读取项目中的babel配置
     presets: ['@babel/preset-env'],
   })
-  if (isType(result, 'Null') || result?.code == undefined) return ''
+  if (result === null || result?.code == undefined) return ''
   return result.code
 }
 
@@ -44,32 +46,36 @@ interface II18nFile {
 }
 
 export const i18nFile = async (
-  I18nWebpackPlugin: plugin
+  plugin: plugin,
+  all: { [props: string]: string[] },
+  index: Map<number, string>
 ): Promise<II18nFile> => {
-  const { path: langPath, getLanguage, type } = I18nWebpackPlugin
+  const { root, customize, getLanguage, type } = plugin.options
   const i18n: { [key: string]: { [key: string]: string } } = {}
 
-  const hasCust = checkDirExists(path.join(langPath, `customize`))
+  const hasCust = checkDirExists(path.join(root, customize))
 
-  for (const value of type.values()) {
-    const target = path.join(langPath, `${value}.json`)
-    if (!checkDirExists(target)) {
-      warn(`
-          i18n package ${value} load failed, 
-          Please check the legality of the Chinese language pack naming!`)
+  for (const t of type) {
+    const list = all[t]!
+
+    const cur: { [key: string]: string } = {}
+    let i = 1
+    for (const lang of list) {
+      cur[index.get(i++)!] = lang
     }
 
-    i18n[value] = JSON.parse(fs.readFileSync(target, 'utf8'))
-    try {
-      const customize = path.join(langPath, `customize/${value}.js`)
+    i18n[t] = cur
 
-      if (hasCust && checkDirExists(customize)) {
+    try {
+      const cus = path.join(root, customize, `${t}.js`)
+
+      if (hasCust && checkDirExists(cus)) {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         require('@babel/register')({
           presets: ['@babel/preset-env'],
         })
 
-        i18n[value].c = await getCustomizeContent(customize)
+        i18n[t].c = await getCustomizeContent(cus)
       }
     } catch (error) {
       log(
@@ -82,7 +88,6 @@ export const i18nFile = async (
   const str = `
   function setCurrentI18nList () {
     function walk (o) {
-
       for (const val of Object.values(o)) {
         if (!val.c) continue
         const customize = val.c = JSON.parse(val.c)
@@ -94,15 +99,17 @@ export const i18nFile = async (
         }
   
       }
-  
       return o
     }
 
     const getLanguage = ${getLanguage}
-    const currenLanguage = getLanguage()
+    const currentLanguage = getLanguage()
     const i18n = ${JSON.stringify(i18n)}
     walk(i18n)
-    window.i18n = i18n[currenLanguage]
+    // 考虑到兼容性，不要使用 Reflect
+    Object.defineProperty(window, 'i18n', {
+      value: i18n[currentLanguage]
+    })
   }
   setCurrentI18nList()
   `
@@ -122,21 +129,55 @@ export const i18nFile = async (
   }
 }
 
+// 获取 excel 文件夹下的所有 excel 文件
+export function getAllExcel(dir: string, all = false): string[] {
+  return fs
+    .readdirSync(dir)
+    .filter((name) => name !== '.DS_Store' && (all || name.startsWith('i18n')))
+}
+
 // 获取缓存的数据
-export const getCache = (path: string, split: string): string[] => {
-  let result: string[] = []
+export const fromExistsExcel = (
+  options: IOptions,
+  range: 'all' | 'zh'
+): { [props: string]: string[] } => {
+  // 当前所有语言类型存储
+  const map: { [props: string]: string[] } = {}
+  const { root, type, excel } = options
 
-  const content = checkFileExists(path)
+  const files = getAllExcel(path.join(root, excel), range === 'zh')
+  if (files.length === 0) return map
 
-  if (content === '') return result
+  const cur = range === 'all' ? type : ['zh']
 
-  try {
-    result = content.split(split)
-  } catch (error) {
-    log(
-      'Cache reading failed, check whether the cache file is maliciously damaged',
-      'red'
-    )
+  for (const t of cur) {
+    map[t] = []
   }
-  return result
+
+  // 遍历读取文件
+  for (const file of files) {
+    const data: string[][] = xlsx.parse(path.join(root, excel, file))[0].data
+    if (file === '.ignore.xlsx') {
+      // 忽略文件的处理
+      map.ignore = []
+      for (let i = 1; i < data.length; i++) {
+        if (!data[i][0]) continue
+        map.ignore.push(data[i][0])
+      }
+      continue
+    }
+    // 获取指定 index => lang
+    const keyMap = new Map<number, string>()
+    data[0].forEach(
+      (lang, index) => cur.includes(lang) && keyMap.set(index, lang)
+    )
+
+    for (let i = 1; i < data.length; i++) {
+      data[i].forEach((item, index) => {
+        keyMap.has(index) && map[keyMap.get(index)!].push(item)
+      })
+    }
+  }
+
+  return map
 }
